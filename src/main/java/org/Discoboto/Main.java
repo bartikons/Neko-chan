@@ -1,9 +1,18 @@
 package org.Discoboto;
 
+import com.sedmelluq.discord.lavaplayer.container.MediaContainerRegistry;
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
 import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager;
 import com.sedmelluq.discord.lavaplayer.source.AudioSourceManagers;
+import com.sedmelluq.discord.lavaplayer.source.bandcamp.BandcampAudioSourceManager;
+import com.sedmelluq.discord.lavaplayer.source.beam.BeamAudioSourceManager;
+import com.sedmelluq.discord.lavaplayer.source.getyarn.GetyarnAudioSourceManager;
+import com.sedmelluq.discord.lavaplayer.source.http.HttpAudioSourceManager;
+import com.sedmelluq.discord.lavaplayer.source.soundcloud.SoundCloudAudioSourceManager;
+import com.sedmelluq.discord.lavaplayer.source.twitch.TwitchStreamAudioSourceManager;
+import com.sedmelluq.discord.lavaplayer.source.vimeo.VimeoAudioSourceManager;
+import com.sedmelluq.discord.lavaplayer.source.youtube.YoutubeAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
@@ -21,6 +30,9 @@ import org.Discoboto.Object.Command;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.*;
 
 public class Main {
@@ -28,11 +40,26 @@ public class Main {
 
     public static final AudioPlayerManager PLAYER_MANAGER;
 
+    protected static final Properties prop = new Properties();
+
     static {
+        try (InputStream input = new FileInputStream(Main.class.getClassLoader().getResource("yt.properties").getPath())) {
+            // load a properties file
+            prop.load(input);
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
         PLAYER_MANAGER = new DefaultAudioPlayerManager();
         // This is an optimization strategy that Discord4J can utilize to minimize allocations
         // PLAYER_MANAGER.getConfiguration().setFrameBufferFactory(NonAllocatingAudioFrameBuffer::new);
-        AudioSourceManagers.registerRemoteSources(PLAYER_MANAGER);
+        PLAYER_MANAGER.registerSourceManager(new YoutubeAudioSourceManager(true, prop.getProperty("email"), prop.getProperty("password")));
+        PLAYER_MANAGER.registerSourceManager(SoundCloudAudioSourceManager.createDefault());
+        PLAYER_MANAGER.registerSourceManager(new BandcampAudioSourceManager());
+        PLAYER_MANAGER.registerSourceManager(new VimeoAudioSourceManager());
+        PLAYER_MANAGER.registerSourceManager(new TwitchStreamAudioSourceManager());
+        PLAYER_MANAGER.registerSourceManager(new BeamAudioSourceManager());
+        PLAYER_MANAGER.registerSourceManager(new GetyarnAudioSourceManager());
+        PLAYER_MANAGER.registerSourceManager(new HttpAudioSourceManager(MediaContainerRegistry.DEFAULT_REGISTRY));
         AudioSourceManagers.registerLocalSource(PLAYER_MANAGER);
     }
 
@@ -66,6 +93,21 @@ public class Main {
                 .doOnNext(channel ->
                         getScheduler(event.getGuildId().get()).skip())
                 .then());
+        commands.put("vol", event -> event.getGuild()
+                .flatMap(guild -> {
+                    try {
+                        getAudioManager(guild.getId())
+                                .getPlayer()
+                                .setVolume(Integer.parseInt(
+                                        event.getMessage()
+                                                .getContent()
+                                                .split(" ")[1]));
+                    } catch (Exception ignored) {
+                        //if there would be any literal
+                    }
+                    return Mono.empty();
+                })
+                .then());
 
 
     }
@@ -77,7 +119,7 @@ public class Main {
                 // join returns a VoiceConnection which would be required if we were
                 // adding disconnection features, but for now we are just ignoring it.
                 .flatMap(channel ->
-                        channel.join().withProvider(GuildAudioManager.of(channel.getGuildId()).getProvider())
+                        channel.join().withProvider(getAudioManager(channel.getGuildId()).getProvider())
                 );
     }
 
@@ -86,7 +128,11 @@ public class Main {
     }
 
     private static AudioTrackScheduler getScheduler(Snowflake event) {
-        return GuildAudioManager.of(event).getScheduler();
+        return getAudioManager(event).getScheduler();
+    }
+
+    private static GuildAudioManager getAudioManager(Snowflake event) {
+        return GuildAudioManager.of(event);
     }
 
 
