@@ -1,6 +1,7 @@
 target/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
+!**/src/main/resources/**
 !**/src/test/**/target/
 
 ### IntelliJ IDEA ###
@@ -8,7 +9,7 @@ target/
 .idea/jarRepositories.xml
 .idea/compiler.xml
 .idea/libraries/
-.idea/*
+.idea/**
 *.iws
 *.iml
 *.ipr
