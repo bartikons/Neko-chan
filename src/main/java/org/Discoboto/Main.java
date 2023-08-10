@@ -1,28 +1,27 @@
 package org.Discoboto;
 
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
-import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
 import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager;
-import com.sedmelluq.discord.lavaplayer.player.event.AudioEventAdapter;
 import com.sedmelluq.discord.lavaplayer.source.AudioSourceManagers;
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
-import com.sedmelluq.discord.lavaplayer.track.AudioTrackEndReason;
 import discord4j.common.util.Snowflake;
-import discord4j.core.DiscordClient;
+import discord4j.core.DiscordClientBuilder;
 import discord4j.core.GatewayDiscordClient;
-import discord4j.core.object.entity.channel.VoiceChannel;
-import discord4j.core.spec.VoiceChannelJoinMono;
-import discord4j.rest.RestClient;
-import discord4j.voice.AudioProvider;
+import discord4j.core.event.domain.message.MessageCreateEvent;
+import discord4j.core.object.VoiceState;
+import discord4j.core.object.entity.Guild;
+import discord4j.core.object.entity.Member;
+import discord4j.core.object.entity.channel.MessageChannel;
+import discord4j.core.spec.MessageCreateMono;
+import discord4j.voice.VoiceConnection;
 import org.Discoboto.Object.Command;
-import org.reactivestreams.Publisher;
-import org.reactivestreams.Subscriber;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.*;
-import java.util.concurrent.atomic.AtomicReference;
 
 public class Main {
     private static final Map<String, Command> commands = new HashMap<>();
@@ -38,108 +37,114 @@ public class Main {
     }
 
     static {
-        commands.put("ping", event -> event.getMessage()
-                .getChannel().block()
-                .createMessage("Pong!").block());
+        commands.put("ping", event -> event.getMessage().getChannel()
+                .flatMap(channel -> channel.createMessage("Pong!"))
+                .then());
+
+        commands.put("join", event -> join(event)
+                .then());
+        commands.put("play", event -> Mono.justOrEmpty(event.getMessage().getContent())
+                .map(content -> Arrays.asList(content.split(" ")))
+                .doOnNext(command -> join(event).then(
+                                loadToTrack(event.getGuildId().get(), command))
+                        .then(event.getMessage()
+                                .getChannel()
+                                .flatMap(
+                                        channel -> getQueue(event, channel))))
+                .then());
+        commands.put("leave", event -> Mono.justOrEmpty(event.getMember())
+                .flatMap(Member::getGuild)
+                .flatMap(Guild::getVoiceConnection)
+                // join returns a VoiceConnection which would be required if we were
+                // adding disconnection features, but for now we are just ignoring it.
+                .flatMap(VoiceConnection::disconnect)
+        );
+        commands.put("Queue", event -> event.getMessage().getChannel()
+                .flatMap(channel -> getQueue(event, channel))
+                .then());
+        commands.put("skip", event -> event.getMessage().getChannel()
+                .doOnNext(channel ->
+                        getScheduler(event.getGuildId().get()).skip())
+                .then());
+
+
     }
+
+    private static Mono<VoiceConnection> join(MessageCreateEvent event) {
+        return Mono.justOrEmpty(event.getMember())
+                .flatMap(Member::getVoiceState)
+                .flatMap(VoiceState::getChannel)
+                // join returns a VoiceConnection which would be required if we were
+                // adding disconnection features, but for now we are just ignoring it.
+                .flatMap(channel ->
+                        channel.join().withProvider(GuildAudioManager.of(channel.getGuildId()).getProvider())
+                );
+    }
+
+    private static MessageCreateMono getQueue(MessageCreateEvent event, MessageChannel channel) {
+        return channel.createMessage(String.valueOf(getScheduler(event.getGuildId().get()).getQueueString()));
+    }
+
+    private static AudioTrackScheduler getScheduler(Snowflake event) {
+        return GuildAudioManager.of(event).getScheduler();
+    }
+
 
     public static void main(String[] args) {
-        String token = args[0];
-        DiscordClient client = DiscordClient.create(token);
 
-        client.getGuilds();
 
-        GatewayDiscordClient blocked = client.login().block();
-        RestClient restClient = blocked.getRestClient();
-        VoiceChannel channel = new VoiceChannel(blocked, restClient.getChannelById(Snowflake.of(689854156785319943L)).getData().block());
-        GuildAudioManager guildAudioManager = GuildAudioManager.of(channel.getGuildId());
-        AudioProvider provider = guildAudioManager.getProvider();
-        client.withGateway(gatewayDiscordClient -> {
-            loadToTrack(guildAudioManager);
-            return channel.join().withProvider(provider);
-        }).block();
-//        voiceChannelJoinMono.block();
+        final GatewayDiscordClient client = DiscordClientBuilder.create(args[0]).build()
+                .login()
+                .block();
 
-        // In the AudioLoadResultHandler, add AudioTrack instances to the AudioTrackScheduler (and send notifications to users)
+        client.getEventDispatcher().on(MessageCreateEvent.class)
+                // 3.1 Message.getContent() is a String
+                .flatMap(event -> Mono.just(event.getMessage().getContent())
+                        .flatMap(content -> Flux.fromIterable(commands.entrySet())
+                                // We will be using ! as our "prefix" to any command in the system.
+                                .filter(entry -> content.startsWith('!' + entry.getKey()))
+                                .flatMap(entry -> entry.getValue().execute(event))
+                                .next()))
+                .subscribe();
+        client.onDisconnect().block();
     }
 
-    private static void loadToTrack(GuildAudioManager guildAudioManager) {
-        PLAYER_MANAGER.loadItem("https://www.youtube.com/watch?v=UnIhRpIT7nc", new AudioLoadResultHandler() {
-            @Override//???? one is not working
-            public void trackLoaded(AudioTrack track) {
-                guildAudioManager.getScheduler().play(track);
-                guildAudioManager.getScheduler().play(track);
-                guildAudioManager.getScheduler().play(track);
-                guildAudioManager.getScheduler().play(track);
-                guildAudioManager.getScheduler().play(track);
-                guildAudioManager.getScheduler().play(track);
-                guildAudioManager.getScheduler().play(track);
-                guildAudioManager.getScheduler().play(track);
-                guildAudioManager.getScheduler().play(track);
-                guildAudioManager.getScheduler().play(track);
-                guildAudioManager.getScheduler().play(track);
-                guildAudioManager.getScheduler().play(track);
-                guildAudioManager.getScheduler().play(track);
+    private static Mono<Void> loadToTrack(Snowflake snowflake, List<String> tracks) {
+        System.out.println(tracks);
+
+        tracks.parallelStream().forEach(track -> {
+            if (Objects.equals(track, "!play")) {
+                return;
             }
+            System.out.println("track " + track);
+            try {
+                PLAYER_MANAGER.loadItem(track, new AudioLoadResultHandler() {
+                    @Override//???? one is not working
+                    public void trackLoaded(AudioTrack track) {
+                        getScheduler(snowflake).play(track);
+                    }
 
-            @Override
-            public void playlistLoaded(AudioPlaylist playlist) {
+                    @Override
+                    public void playlistLoaded(AudioPlaylist playlist) {
+
+                    }
+
+                    @Override
+                    public void noMatches() {
+
+                    }
+
+                    @Override
+                    public void loadFailed(FriendlyException exception) {
+
+                    } /* overrides */
+                });
+            } catch (Exception e) {
+                e.printStackTrace();
 
             }
-
-            @Override
-            public void noMatches() {
-
-            }
-
-            @Override
-            public void loadFailed(FriendlyException exception) {
-
-            } /* overrides */
         });
+        return Mono.empty();
     }
 
-    public static class AudioTrackScheduler extends AudioEventAdapter {
-
-        private final List<AudioTrack> queue;
-        private final AudioPlayer player;
-
-        public AudioTrackScheduler(AudioPlayer player) {
-            // The queue may be modifed by different threads so guarantee memory safety
-            // This does not, however, remove several race conditions currently present
-            queue = Collections.synchronizedList(new LinkedList<>());
-            player.setVolume(4);
-            this.player = player;
-        }
-
-        public List<AudioTrack> getQueue() {
-            return queue;
-        }
-
-        public boolean play(AudioTrack track) {
-            return play(track, false);
-        }
-
-        public boolean play(AudioTrack track, boolean force) {
-            boolean playing = player.startTrack(track, !force);
-
-            if (!playing) {
-                queue.add(track);
-            }
-
-            return playing;
-        }
-
-        public boolean skip() {
-            return !queue.isEmpty() && play(queue.remove(0), true);
-        }
-
-        @Override
-        public void onTrackEnd(AudioPlayer player, AudioTrack track, AudioTrackEndReason endReason) {
-            // Advance the player if the track completed naturally (FINISHED) or if the track cannot play (LOAD_FAILED)
-            if (endReason.mayStartNext) {
-                skip();
-            }
-        }
-    }
 }

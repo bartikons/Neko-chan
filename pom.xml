@@ -19,6 +19,7 @@
         <maven.compiler.source>20</maven.compiler.source>
         <maven.compiler.target>20</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <Lava-player>1.5.0</Lava-player>
     </properties>
     <dependencies>
         <dependency>
@@ -35,34 +36,24 @@
         <!-- https://mvnrepository.com/artifact/com.sedmelluq/lavaplayer -->
         <!-- https://mvnrepository.com/artifact/com.sedmelluq/lavaplayer -->
         <dependency>
-            <groupId>com.github.walkyst</groupId>
-            <artifactId>lavaplayer-fork</artifactId>
-            <version>1.4.2</version>
+            <groupId>dev.arbjerg</groupId>
+            <artifactId>lavaplayer</artifactId>
+            <version>${Lava-player}</version>
         </dependency>
         <dependency>
-            <groupId>com.github.walkyst.lavaplayer-fork</groupId>
+            <groupId>dev.arbjerg</groupId>
             <artifactId>lava-common</artifactId>
-            <version>1.4.2</version>
+            <version>${Lava-player}</version>
         </dependency>
         <dependency>
-            <groupId>com.github.walkyst.lavaplayer-fork</groupId>
+            <groupId>dev.arbjerg</groupId>
             <artifactId>lavaplayer-ext-format-xm</artifactId>
-            <version>1.4.2</version>
+            <version>${Lava-player}</version>
         </dependency>
         <dependency>
-            <groupId>com.github.walkyst.lavaplayer-fork</groupId>
-            <artifactId>lavaplayer-stream-merger</artifactId>
-            <version>1.4.2</version>
-        </dependency>
-        <dependency>
-            <groupId>com.github.walkyst.lavaplayer-fork</groupId>
+            <groupId>dev.arbjerg</groupId>
             <artifactId>lavaplayer-ext-youtube-rotator</artifactId>
-            <version>1.4.2</version>
-        </dependency>
-        <dependency>
-            <groupId>com.github.walkyst.lavaplayer-fork</groupId>
-            <artifactId>lavaplayer-test-samples</artifactId>
-            <version>1.4.2</version>
+            <version>${Lava-player}</version>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>
@@ -73,6 +64,11 @@
             <groupId>log4j</groupId>
             <artifactId>log4j</artifactId>
             <version>1.2.17</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>2.0.7</version>
         </dependency>
     </dependencies>
 </project>

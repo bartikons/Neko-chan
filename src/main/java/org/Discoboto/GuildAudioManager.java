@@ -2,7 +2,6 @@ package org.Discoboto;
 
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
 import discord4j.common.util.Snowflake;
-import org.Discoboto.Main.AudioTrackScheduler;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,7 +25,9 @@ public class GuildAudioManager {
     private static final Map<Snowflake, GuildAudioManager> MANAGERS = new ConcurrentHashMap<>();
 
     public static GuildAudioManager of(Snowflake id) {
+        System.out.println("computing " + id);
         return MANAGERS.computeIfAbsent(id, ignored -> new GuildAudioManager());
+
     }
 
     private final AudioPlayer player;
