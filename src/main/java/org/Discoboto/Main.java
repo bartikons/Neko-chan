@@ -103,6 +103,7 @@ public class Main {
         commands.put("skip", event -> event.getMessage().getChannel()
                 .doOnNext(channel -> {
                             skip(event);
+                            getQueue(event, channel).block();
                         }
                 ).then());
         commands.put("vol", event -> event.getGuild()
@@ -192,7 +193,7 @@ public class Main {
         return blockUser.contains(event.getMessage().getAuthor().get().getId());
     }
 
-    private static Mono<Void> loadToTrack(Snowflake snowflake, List<String> tracks) {
+    private static void loadToTrack(Snowflake snowflake, List<String> tracks) {
         System.out.println(tracks);
         AudioTrackScheduler audioTrackScheduler = getScheduler(snowflake);
 
@@ -203,7 +204,7 @@ public class Main {
             System.out.println("track " + track);
             try {
                 PLAYER_MANAGER.loadItem(track, new AudioLoadResultHandler() {
-                    @Override//???? one is not working
+                    @Override
                     public void trackLoaded(AudioTrack track) {
                         audioTrackScheduler.play(track);
                     }
@@ -237,7 +238,6 @@ public class Main {
                 throw new RuntimeException(e);
             }
         }
-        return Mono.empty();
     }
 
 }
