@@ -34,93 +34,120 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class Main {
     private static final Map<String, Command> commands = new HashMap<>();
 
-    public static final AudioPlayerManager PLAYER_MANAGER;
-    static List<Snowflake> blockUser;
+    public static final AudioPlayerManager PLAYER_MANAGER = new DefaultAudioPlayerManager();
+    static Map<Snowflake, List<Snowflake>> blockUser = new ConcurrentHashMap<>();
 
     protected static final Properties prop = new Properties();
 
     static {
-        try (InputStream input = new FileInputStream(Main.class.getClassLoader().getResource("yt.properties").getPath())) {
-            // load a properties file
-            prop.load(input);
-        } catch (IOException ex) {
-            ex.printStackTrace();
-        }
         try {
-            blockUser = Arrays.stream(prop.getProperty("blocked").split(",")).map(Snowflake::of).toList();
-        } catch (Exception ignored) {
-            blockUser = new ArrayList<>();
-        }
-        PLAYER_MANAGER = new DefaultAudioPlayerManager();
-        // This is an optimization strategy that Discord4J can utilize to minimize allocations
-        // PLAYER_MANAGER.getConfiguration().setFrameBufferFactory(NonAllocatingAudioFrameBuffer::new);
-        if (prop.containsKey("email") && prop.containsKey("password")) {
-            PLAYER_MANAGER.registerSourceManager(new YoutubeAudioSourceManager(true, prop.getProperty("email"), prop.getProperty("password")));
-        } else {
-            PLAYER_MANAGER.registerSourceManager(new YoutubeAudioSourceManager(true, null, null));
-        }
-        PLAYER_MANAGER.registerSourceManager(SoundCloudAudioSourceManager.createDefault());
-        PLAYER_MANAGER.registerSourceManager(new BandcampAudioSourceManager());
-        PLAYER_MANAGER.registerSourceManager(new VimeoAudioSourceManager());
-        PLAYER_MANAGER.registerSourceManager(new TwitchStreamAudioSourceManager());
-        PLAYER_MANAGER.registerSourceManager(new BeamAudioSourceManager());
-        PLAYER_MANAGER.registerSourceManager(new GetyarnAudioSourceManager());
-        PLAYER_MANAGER.registerSourceManager(new HttpAudioSourceManager(MediaContainerRegistry.DEFAULT_REGISTRY));
-        AudioSourceManagers.registerLocalSource(PLAYER_MANAGER);
-    }
+            try (InputStream input = new FileInputStream(Main.class.getClassLoader().getResource("yt.properties").getPath())) {
+                // load a properties file
+                prop.load(input);
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
+            try {
+                try {
+                    Arrays.stream(prop.getProperty("blocked").split(","))
+                            .forEach(guildBlockedUser -> {
+                                String[] helper = guildBlockedUser.split(":");
+                                List<Snowflake> listOfBlocked = blockUser.computeIfAbsent(Snowflake.of(helper[0]), k -> new ArrayList<>());
+                                listOfBlocked.add(Snowflake.of(helper[1]));
+                            });
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
 
-    static {
-        commands.put("ping", event -> event.getMessage().getChannel()
-                .flatMap(channel -> reply(channel, "Pong!"))
-                .then());
+            } catch (Exception ignored) {
+                blockUser = new ConcurrentHashMap<>();
+            }
+            // This is an optimization strategy that Discord4J can utilize to minimize allocations
+            // PLAYER_MANAGER.getConfiguration().setFrameBufferFactory(NonAllocatingAudioFrameBuffer::new);
+            if (prop.containsKey("email") && prop.containsKey("password")) {
+                PLAYER_MANAGER.registerSourceManager(new YoutubeAudioSourceManager(true, prop.getProperty("email"), prop.getProperty("password")));
+            } else {
+                PLAYER_MANAGER.registerSourceManager(new YoutubeAudioSourceManager(true, null, null));
+            }
+            PLAYER_MANAGER.registerSourceManager(SoundCloudAudioSourceManager.createDefault());
+            PLAYER_MANAGER.registerSourceManager(new BandcampAudioSourceManager());
+            PLAYER_MANAGER.registerSourceManager(new VimeoAudioSourceManager());
+            PLAYER_MANAGER.registerSourceManager(new TwitchStreamAudioSourceManager());
+            PLAYER_MANAGER.registerSourceManager(new BeamAudioSourceManager());
+            PLAYER_MANAGER.registerSourceManager(new GetyarnAudioSourceManager());
+            PLAYER_MANAGER.registerSourceManager(new HttpAudioSourceManager(MediaContainerRegistry.DEFAULT_REGISTRY));
+            AudioSourceManagers.registerLocalSource(PLAYER_MANAGER);
 
-        commands.put("join", event -> join(event)
-                .then());
-        commands.put("play", event -> Mono.justOrEmpty(event.getMessage().getContent())
-                .map(content -> Arrays.asList(content.split(" ")))
-                .doOnNext(command -> {
-                    join(event).block();
-                    loadToTrack(event.getGuildId().get(), command);
-                    event.getMessage()
-                            .getChannel()
-                            .flatMap(
-                                    channel -> getQueue(event, channel)).block();
-                })
-                .then());
-        commands.put("leave", event -> Mono.justOrEmpty(event.getMember())
-                .flatMap(Member::getGuild)
-                .flatMap(Guild::getVoiceConnection)
-                // join returns a VoiceConnection which would be required if we were
-                // adding disconnection features, but for now we are just ignoring it.
-                .flatMap(VoiceConnection::disconnect));
-        commands.put("Queue", event -> event.getMessage().getChannel()
-                .flatMap(channel -> getQueue(event, channel))
-                .then());
-        commands.put("skip", event -> event.getMessage().getChannel()
-                .doOnNext(channel -> {
-                            skip(event);
-                            getQueue(event, channel).block();
+            commands.put("ping", event -> event.getMessage().getChannel()
+                    .flatMap(channel -> reply(channel, "Pong!"))
+                    .then());
+
+            commands.put("join", event -> join(event)
+                    .then());
+            commands.put("play", event -> Mono.justOrEmpty(event.getMessage().getContent())
+                    .map(content -> Arrays.asList(content.split(" ")))
+                    .doOnNext(command -> {
+                        try {
+                            join(event).block();
+                            Snowflake snowflake = event.getGuildId().get();
+                            loadToTrack(snowflake, command);
+                            event.getMessage()
+                                    .getChannel()
+                                    .flatMap(
+                                            channel -> getQueue(snowflake, channel)).block();
+                        } catch (Exception e) {
+                            e.printStackTrace();
                         }
-                ).then());
-        commands.put("vol", event -> event.getGuild()
-                .flatMap(guild -> {
-                    try {
-                        getAudioManager(guild.getId())
-                                .getPlayer()
-                                .setVolume(Integer.parseInt(
-                                        event.getMessage()
-                                                .getContent()
-                                                .split(" ")[1]));
-                    } catch (Exception ignored) {
-                        //if there would be any literal
+                    })
+                    .then());
+            commands.put("leave", event -> Mono.justOrEmpty(event.getMember())
+                    .flatMap(Member::getGuild)
+                    .flatMap(Guild::getVoiceConnection)
+                    // join returns a VoiceConnection which would be required if we were
+                    // adding disconnection features, but for now we are just ignoring it.
+                    .flatMap(VoiceConnection::disconnect));
+            commands.put("Queue", event -> event.getMessage().getChannel()
+                    .flatMap(channel -> getQueue(event.getGuildId().get(), channel))
+                    .then());
+            commands.put("skip", event -> event.getMessage().getChannel()
+                    .doOnNext(channel -> {
+                                skip(event);
+                                getQueue(event.getGuildId().get(), channel).block();
+                            }
+                    ).then());
+            commands.put("vol", event -> event.getGuild()
+                    .flatMap(guild -> {
+                        try {
+                            getAudioManager(guild.getId())
+                                    .getPlayer()
+                                    .setVolume(Integer.parseInt(
+                                            event.getMessage()
+                                                    .getContent()
+                                                    .split(" ")[1]));
+                        } catch (Exception ignored) {
+                            //if there would be any literal
+                        }
+                        return Mono.empty();
+                    })
+                    .then());
+            commands.put("repeat", event -> {
+                        GuildAudioManager guildAudioManager = getAudioManager(event.getGuildId().get());
+                        guildAudioManager.getScheduler().toggleRepeat();
+                        return reply(event.getMessage().getChannel().block(), guildAudioManager.getScheduler().isRepeat() ? "Neko will be repeating song NYA~" : "Neko will stop repeating ...nya!").then();
                     }
-                    return Mono.empty();
-                })
-                .then());
+            );
+
+
+//        commands.put("block", event -> event.getGuild().flatMap()
+//                .then());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private static void skip(MessageCreateEvent event) {
@@ -149,8 +176,9 @@ public class Main {
                 );
     }
 
-    private static MessageCreateMono getQueue(MessageCreateEvent event, MessageChannel channel) {
-        return reply(channel, "Queue: \n" + getScheduler(event.getGuildId().get()).getQueueString());
+    private static MessageCreateMono getQueue(Snowflake snowflake, MessageChannel channel) {
+        GuildAudioManager guildAudioManager = getAudioManager(snowflake);
+        return reply(channel, "Currently Playing " + guildAudioManager.getPlayer().getPlayingTrack().getInfo().title + "\n" + "In Queue: \n" + guildAudioManager.getScheduler().getQueueString());
     }
 
     private static AudioTrackScheduler getScheduler(Snowflake event) {
@@ -168,75 +196,91 @@ public class Main {
         final GatewayDiscordClient client = DiscordClientBuilder.create(args[0]).build()
                 .login()
                 .block();
+        try {
+            client.getEventDispatcher().on(MessageCreateEvent.class)
+                    // 3.1 Message.getContent() is a String
+                    .flatMap(event -> Mono.just(event.getMessage().getContent())
+                            .flatMap(content -> Flux.fromIterable(commands.entrySet())
+                                    // We will be using ! as our "prefix" to any command in the system.
+                                    .filter(entry -> content.startsWith('!' + entry.getKey()))
+                                    .flatMap(entry -> {
+                                        if (isBlocked(event)) {
+                                            return Mono.just(reply(event.getMessage().getChannel().block(), "Fuck off")).block().then(Mono.just(""));
+                                        }
+                                        return entry.getValue().execute(event);
+                                    })
+                                    .next()))
+                    .subscribe();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
-        client.getEventDispatcher().on(MessageCreateEvent.class)
-                // 3.1 Message.getContent() is a String
-                .flatMap(event -> Mono.just(event.getMessage().getContent())
-                        .flatMap(content -> Flux.fromIterable(commands.entrySet())
-                                // We will be using ! as our "prefix" to any command in the system.
-                                .filter(entry -> content.startsWith('!' + entry.getKey()))
-                                .flatMap(entry -> {
-                                    if (isBlocked(event)) {
-                                        return Mono.just(reply(event.getMessage().getChannel().block(), "Fuck off")).block().then(Mono.just(""));
-                                    }
-                                    return entry.getValue().execute(event);
-                                })
-                                .next()))
-                .subscribe();
         client.onDisconnect().block();
     }
 
     private static boolean isBlocked(MessageCreateEvent event) {
-        if (event.getMessage().getAuthor().isEmpty()) {
+        try {
+            if (event.getMessage().getAuthor().isEmpty()) {
+                return true;
+            }
+            Snowflake snowflake = event.getGuildId().get();
+            blockUser.computeIfAbsent(snowflake, k -> new ArrayList<>());
+            return blockUser.get(snowflake).contains(event.getMessage().getAuthor().get().getId());
+        } catch (Exception e) {
+            e.printStackTrace();
             return true;
         }
-        return blockUser.contains(event.getMessage().getAuthor().get().getId());
     }
 
     private static void loadToTrack(Snowflake snowflake, List<String> tracks) {
-        System.out.println(tracks);
-        AudioTrackScheduler audioTrackScheduler = getScheduler(snowflake);
+        try {
+            System.out.println(tracks);
+            GuildAudioManager guildAudioManager = getAudioManager(snowflake);
+            System.out.println(tracks);
+            tracks.parallelStream().forEach(track -> {
+                if (Objects.equals(track, "!play") || track.trim().isEmpty()) {
+                    return;
+                }
+                System.out.println("track " + track);
+                try {
+                    PLAYER_MANAGER.loadItem(track, new AudioLoadResultHandler() {
+                        @Override
+                        public void trackLoaded(AudioTrack track) {
+                            guildAudioManager.getScheduler().play(track);
+                        }
 
-        tracks.parallelStream().forEach(track -> {
-            if (Objects.equals(track, "!play")) {
-                return;
-            }
-            System.out.println("track " + track);
-            try {
-                PLAYER_MANAGER.loadItem(track, new AudioLoadResultHandler() {
-                    @Override
-                    public void trackLoaded(AudioTrack track) {
-                        audioTrackScheduler.play(track);
-                    }
+                        @Override
+                        public void playlistLoaded(AudioPlaylist playlist) {
 
-                    @Override
-                    public void playlistLoaded(AudioPlaylist playlist) {
+                        }
 
-                    }
+                        @Override
+                        public void noMatches() {
 
-                    @Override
-                    public void noMatches() {
+                        }
 
-                    }
-
-                    @Override
-                    public void loadFailed(FriendlyException exception) {
-                        exception.printStackTrace();
+                        @Override
+                        public void loadFailed(FriendlyException exception) {
+                            exception.printStackTrace();
 
 
-                    } /* overrides */
-                });
-            } catch (Exception e) {
-                e.printStackTrace();
+                        } /* overrides */
+                    });
+                } catch (Exception e) {
+                    e.printStackTrace();
 
-            }
-        });
-        while (audioTrackScheduler.getQueue().isEmpty()) {
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
+                }
+            });
+            do {
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            } while (guildAudioManager.getPlayer().getPlayingTrack() == null && guildAudioManager.getScheduler().getQueue().isEmpty());
+
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 

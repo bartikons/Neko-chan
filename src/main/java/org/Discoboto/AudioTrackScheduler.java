@@ -15,6 +15,16 @@ public class AudioTrackScheduler extends AudioEventAdapter {
     private final List<AudioTrack> queue;
     private final AudioPlayer player;
 
+    private boolean repeat;
+
+    public boolean isRepeat() {
+        return repeat;
+    }
+
+    public void toggleRepeat() {
+        this.repeat = !repeat;
+    }
+
     public AudioTrackScheduler(AudioPlayer player) {
         // The queue may be modifed by different threads so guarantee memory safety
         // This does not, however, remove several race conditions currently present
@@ -53,6 +63,10 @@ public class AudioTrackScheduler extends AudioEventAdapter {
     @Override
     public void onTrackEnd(AudioPlayer player, AudioTrack track, AudioTrackEndReason endReason) {
         // Advance the player if the track completed naturally (FINISHED) or if the track cannot play (LOAD_FAILED)
+
+        if (repeat) {
+            queue.add(player.getPlayingTrack());
+        }
         if (endReason.mayStartNext) {
             skip();
         }
