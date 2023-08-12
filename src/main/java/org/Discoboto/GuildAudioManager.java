@@ -25,7 +25,6 @@ public class GuildAudioManager {
     private static final Map<Snowflake, GuildAudioManager> MANAGERS = new ConcurrentHashMap<>();
 
     public static GuildAudioManager of(Snowflake id) {
-        System.out.println("computing " + id);
         return MANAGERS.computeIfAbsent(id, ignored -> new GuildAudioManager());
 
     }

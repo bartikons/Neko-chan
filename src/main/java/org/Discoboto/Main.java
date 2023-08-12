@@ -301,7 +301,10 @@ public class Main {
 
                 }
             });
+            long timo = System.currentTimeMillis();
             do {
+                if (System.currentTimeMillis() - timo > 5000)
+                    break;
                 try {
                     Thread.sleep(100);
                 } catch (InterruptedException e) {
