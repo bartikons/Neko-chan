@@ -271,7 +271,6 @@ public class Main {
                 if (Objects.equals(track, "!play") || track.trim().isEmpty()) {
                     return;
                 }
-                System.out.println("track " + track);
                 try {
                     PLAYER_MANAGER.loadItem(track, new AudioLoadResultHandler() {
                         @Override
