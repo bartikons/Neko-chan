@@ -39,10 +39,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class Main {
     private static final Map<String, Command> commands = new HashMap<>();
-
     public static final AudioPlayerManager PLAYER_MANAGER = new DefaultAudioPlayerManager();
     static Map<Snowflake, List<Snowflake>> blockUser = new ConcurrentHashMap<>();
-
     protected static final Properties prop = new Properties();
 
     static {
@@ -218,16 +216,25 @@ public class Main {
             client.getEventDispatcher().on(MessageCreateEvent.class)
                     // 3.1 Message.getContent() is a String
                     .flatMap(event -> Mono.just(event.getMessage().getContent())
-                            .flatMap(content -> Flux.fromIterable(commands.entrySet())
-                                    // We will be using ! as our "prefix" to any command in the system.
-                                    .filter(entry -> content.startsWith('!' + entry.getKey()))
-                                    .flatMap(entry -> {
-                                        if (isBlocked(event)) {
-                                            return Mono.just(reply(event.getMessage().getChannel().block(), "Fuck off")).block().then(Mono.just(""));
+                            .flatMap(content -> {
+                                        try {
+                                            return Flux.fromIterable(commands.entrySet())
+                                                    // We will be using ! as our "prefix" to any command in the system.
+                                                    .filter(entry -> content.startsWith('!' + entry.getKey()))
+                                                    .flatMap(entry -> {
+                                                        if (isBlocked(event)) {
+                                                            return Mono.just(reply(event.getMessage().getChannel().block(), "Fuck off")).block().then(Mono.just(""));
+                                                        }
+                                                        return entry.getValue().execute(event);
+                                                    })
+                                                    .next();
+                                        } catch (Exception e) {
+                                            e.printStackTrace();
+                                            return Mono.empty();
                                         }
-                                        return entry.getValue().execute(event);
-                                    })
-                                    .next()))
+                                    }
+                            )
+                    )
                     .subscribe();
         } catch (Exception e) {
             e.printStackTrace();
