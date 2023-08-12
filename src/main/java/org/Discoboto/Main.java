@@ -2,6 +2,7 @@ package org.Discoboto;
 
 import com.sedmelluq.discord.lavaplayer.container.MediaContainerRegistry;
 import com.sedmelluq.discord.lavaplayer.player.AudioLoadResultHandler;
+import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
 import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager;
 import com.sedmelluq.discord.lavaplayer.source.AudioSourceManagers;
@@ -234,9 +235,13 @@ public class Main {
 
     private static void loadToTrack(Snowflake snowflake, List<String> tracks) {
         try {
-            System.out.println(tracks);
             GuildAudioManager guildAudioManager = getAudioManager(snowflake);
-            System.out.println(tracks);
+            AudioPlayer audioPlayer = guildAudioManager.getPlayer();
+            AudioTrackScheduler scheduler = guildAudioManager.getScheduler();
+            int size = -1;
+            if (audioPlayer != null) {
+                size = scheduler.getQueue().size();
+            }
             tracks.parallelStream().forEach(track -> {
                 if (Objects.equals(track, "!play") || track.trim().isEmpty()) {
                     return;
@@ -246,7 +251,7 @@ public class Main {
                     PLAYER_MANAGER.loadItem(track, new AudioLoadResultHandler() {
                         @Override
                         public void trackLoaded(AudioTrack track) {
-                            guildAudioManager.getScheduler().play(track);
+                            scheduler.play(track);
                         }
 
                         @Override
@@ -277,7 +282,7 @@ public class Main {
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
-            } while (guildAudioManager.getPlayer().getPlayingTrack() == null && guildAudioManager.getScheduler().getQueue().isEmpty());
+            } while ((audioPlayer.getPlayingTrack() == null && scheduler.getQueue().isEmpty()) || (size != -1 && scheduler.getQueue().size() == size));
 
         } catch (Exception e) {
             e.printStackTrace();
