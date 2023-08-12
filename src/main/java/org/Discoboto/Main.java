@@ -58,7 +58,11 @@ public class Main {
         PLAYER_MANAGER = new DefaultAudioPlayerManager();
         // This is an optimization strategy that Discord4J can utilize to minimize allocations
         // PLAYER_MANAGER.getConfiguration().setFrameBufferFactory(NonAllocatingAudioFrameBuffer::new);
-        PLAYER_MANAGER.registerSourceManager(new YoutubeAudioSourceManager(true, prop.getProperty("email"), prop.getProperty("password")));
+        if (prop.containsKey("email") && prop.containsKey("password")) {
+            PLAYER_MANAGER.registerSourceManager(new YoutubeAudioSourceManager(true, prop.getProperty("email"), prop.getProperty("password")));
+        } else {
+            PLAYER_MANAGER.registerSourceManager(new YoutubeAudioSourceManager(true, null, null));
+        }
         PLAYER_MANAGER.registerSourceManager(SoundCloudAudioSourceManager.createDefault());
         PLAYER_MANAGER.registerSourceManager(new BandcampAudioSourceManager());
         PLAYER_MANAGER.registerSourceManager(new VimeoAudioSourceManager());
@@ -69,10 +73,9 @@ public class Main {
         AudioSourceManagers.registerLocalSource(PLAYER_MANAGER);
     }
 
-    //266548533707014144
     static {
         commands.put("ping", event -> event.getMessage().getChannel()
-                .flatMap(channel -> replay(channel, "Pong!"))
+                .flatMap(channel -> reply(channel, "Pong!"))
                 .then());
 
         commands.put("join", event -> join(event)
@@ -93,8 +96,7 @@ public class Main {
                 .flatMap(Guild::getVoiceConnection)
                 // join returns a VoiceConnection which would be required if we were
                 // adding disconnection features, but for now we are just ignoring it.
-                .flatMap(VoiceConnection::disconnect)
-        );
+                .flatMap(VoiceConnection::disconnect));
         commands.put("Queue", event -> event.getMessage().getChannel()
                 .flatMap(channel -> getQueue(event, channel))
                 .then());
@@ -118,7 +120,6 @@ public class Main {
                     return Mono.empty();
                 })
                 .then());
-
     }
 
     private static void skip(MessageCreateEvent event) {
@@ -132,7 +133,7 @@ public class Main {
         }
     }
 
-    private static MessageCreateMono replay(MessageChannel channel, String message) {
+    private static MessageCreateMono reply(MessageChannel channel, String message) {
         return channel.createMessage(message);
     }
 
@@ -148,7 +149,7 @@ public class Main {
     }
 
     private static MessageCreateMono getQueue(MessageCreateEvent event, MessageChannel channel) {
-        return replay(channel, "Queue: \n" + getScheduler(event.getGuildId().get()).getQueueString());
+        return reply(channel, "Queue: \n" + getScheduler(event.getGuildId().get()).getQueueString());
     }
 
     private static AudioTrackScheduler getScheduler(Snowflake event) {
@@ -175,7 +176,7 @@ public class Main {
                                 .filter(entry -> content.startsWith('!' + entry.getKey()))
                                 .flatMap(entry -> {
                                     if (isBlocked(event)) {
-                                        return Mono.just(replay(event.getMessage().getChannel().block(), "Fuck off")).block().then(Mono.just(""));
+                                        return Mono.just(reply(event.getMessage().getChannel().block(), "Fuck off")).block().then(Mono.just(""));
                                     }
                                     return entry.getValue().execute(event);
                                 })
@@ -219,6 +220,8 @@ public class Main {
 
                     @Override
                     public void loadFailed(FriendlyException exception) {
+                        exception.printStackTrace();
+
 
                     } /* overrides */
                 });
