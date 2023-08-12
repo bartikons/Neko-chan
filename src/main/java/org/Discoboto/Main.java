@@ -42,7 +42,7 @@ public class Main {
     public static final AudioPlayerManager PLAYER_MANAGER = new DefaultAudioPlayerManager();
     static Map<Snowflake, List<Snowflake>> blockUser = new ConcurrentHashMap<>();
     protected static final Properties prop = new Properties();
-    private GatewayDiscordClient client;
+    private static GatewayDiscordClient client;
 
     static {
         try {
