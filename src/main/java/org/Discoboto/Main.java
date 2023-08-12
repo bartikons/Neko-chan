@@ -111,7 +111,7 @@ public class Main {
                     // join returns a VoiceConnection which would be required if we were
                     // adding disconnection features, but for now we are just ignoring it.
                     .flatMap(VoiceConnection::disconnect));
-            commands.put("Queue", event -> event.getMessage().getChannel()
+            commands.put("queue", event -> event.getMessage().getChannel()
                     .flatMap(channel -> getQueue(event.getGuildId().get(), channel))
                     .then());
             commands.put("skip", event -> event.getMessage().getChannel()
@@ -221,7 +221,7 @@ public class Main {
                                         try {
                                             return Flux.fromIterable(commands.entrySet())
                                                     // We will be using ! as our "prefix" to any command in the system.
-                                                    .filter(entry -> content.startsWith('!' + entry.getKey()))
+                                                    .filter(entry -> content.toLowerCase().startsWith('!' + entry.getKey()))
                                                     .flatMap(entry -> {
                                                         if (isBlocked(event)) {
                                                             return Mono.just(reply(event.getMessage().getChannel().block(), "Fuck off")).block().then(Mono.just(""));
