@@ -39,6 +39,7 @@ public class Main {
     private static final Map<String, Command> commands = new HashMap<>();
 
     public static final AudioPlayerManager PLAYER_MANAGER;
+    static List<Snowflake> blockUser;
 
     protected static final Properties prop = new Properties();
 
@@ -48,6 +49,11 @@ public class Main {
             prop.load(input);
         } catch (IOException ex) {
             ex.printStackTrace();
+        }
+        try {
+            blockUser = Arrays.stream(prop.getProperty("blocked").split(",")).map(Snowflake::of).toList();
+        } catch (Exception ignored) {
+            blockUser = new ArrayList<>();
         }
         PLAYER_MANAGER = new DefaultAudioPlayerManager();
         // This is an optimization strategy that Discord4J can utilize to minimize allocations
@@ -63,21 +69,24 @@ public class Main {
         AudioSourceManagers.registerLocalSource(PLAYER_MANAGER);
     }
 
+    //266548533707014144
     static {
         commands.put("ping", event -> event.getMessage().getChannel()
-                .flatMap(channel -> channel.createMessage("Pong!"))
+                .flatMap(channel -> replay(channel, "Pong!"))
                 .then());
 
         commands.put("join", event -> join(event)
                 .then());
         commands.put("play", event -> Mono.justOrEmpty(event.getMessage().getContent())
                 .map(content -> Arrays.asList(content.split(" ")))
-                .doOnNext(command -> join(event).then(
-                                loadToTrack(event.getGuildId().get(), command))
-                        .then(event.getMessage()
-                                .getChannel()
-                                .flatMap(
-                                        channel -> getQueue(event, channel))))
+                .doOnNext(command -> {
+                    join(event).block();
+                    loadToTrack(event.getGuildId().get(), command);
+                    event.getMessage()
+                            .getChannel()
+                            .flatMap(
+                                    channel -> getQueue(event, channel)).block();
+                })
                 .then());
         commands.put("leave", event -> Mono.justOrEmpty(event.getMember())
                 .flatMap(Member::getGuild)
@@ -90,9 +99,10 @@ public class Main {
                 .flatMap(channel -> getQueue(event, channel))
                 .then());
         commands.put("skip", event -> event.getMessage().getChannel()
-                .doOnNext(channel ->
-                        getScheduler(event.getGuildId().get()).skip())
-                .then());
+                .doOnNext(channel -> {
+                            skip(event);
+                        }
+                ).then());
         commands.put("vol", event -> event.getGuild()
                 .flatMap(guild -> {
                     try {
@@ -109,7 +119,21 @@ public class Main {
                 })
                 .then());
 
+    }
 
+    private static void skip(MessageCreateEvent event) {
+        int skip = 1;
+        try {
+            skip = Integer.parseInt(event.getMessage().getContent().split(" ")[1]);
+        } catch (Exception ignored) {
+        }
+        for (int i = 0; i < skip; i++) {
+            getScheduler(event.getGuildId().get()).skip();
+        }
+    }
+
+    private static MessageCreateMono replay(MessageChannel channel, String message) {
+        return channel.createMessage(message);
     }
 
     private static Mono<VoiceConnection> join(MessageCreateEvent event) {
@@ -124,7 +148,7 @@ public class Main {
     }
 
     private static MessageCreateMono getQueue(MessageCreateEvent event, MessageChannel channel) {
-        return channel.createMessage(String.valueOf(getScheduler(event.getGuildId().get()).getQueueString()));
+        return replay(channel, "Queue: \n" + getScheduler(event.getGuildId().get()).getQueueString());
     }
 
     private static AudioTrackScheduler getScheduler(Snowflake event) {
@@ -149,14 +173,27 @@ public class Main {
                         .flatMap(content -> Flux.fromIterable(commands.entrySet())
                                 // We will be using ! as our "prefix" to any command in the system.
                                 .filter(entry -> content.startsWith('!' + entry.getKey()))
-                                .flatMap(entry -> entry.getValue().execute(event))
+                                .flatMap(entry -> {
+                                    if (isBlocked(event)) {
+                                        return Mono.just(replay(event.getMessage().getChannel().block(), "Fuck off")).block().then(Mono.just(""));
+                                    }
+                                    return entry.getValue().execute(event);
+                                })
                                 .next()))
                 .subscribe();
         client.onDisconnect().block();
     }
 
+    private static boolean isBlocked(MessageCreateEvent event) {
+        if (event.getMessage().getAuthor().isEmpty()) {
+            return true;
+        }
+        return blockUser.contains(event.getMessage().getAuthor().get().getId());
+    }
+
     private static Mono<Void> loadToTrack(Snowflake snowflake, List<String> tracks) {
         System.out.println(tracks);
+        AudioTrackScheduler audioTrackScheduler = getScheduler(snowflake);
 
         tracks.parallelStream().forEach(track -> {
             if (Objects.equals(track, "!play")) {
@@ -167,7 +204,7 @@ public class Main {
                 PLAYER_MANAGER.loadItem(track, new AudioLoadResultHandler() {
                     @Override//???? one is not working
                     public void trackLoaded(AudioTrack track) {
-                        getScheduler(snowflake).play(track);
+                        audioTrackScheduler.play(track);
                     }
 
                     @Override
@@ -190,6 +227,13 @@ public class Main {
 
             }
         });
+        while (audioTrackScheduler.getQueue().isEmpty()) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
         return Mono.empty();
     }
 
