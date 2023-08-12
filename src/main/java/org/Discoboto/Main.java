@@ -42,6 +42,7 @@ public class Main {
     public static final AudioPlayerManager PLAYER_MANAGER = new DefaultAudioPlayerManager();
     static Map<Snowflake, List<Snowflake>> blockUser = new ConcurrentHashMap<>();
     protected static final Properties prop = new Properties();
+    private GatewayDiscordClient client;
 
     static {
         try {
@@ -209,7 +210,7 @@ public class Main {
     public static void main(String[] args) {
 
 
-        final GatewayDiscordClient client = DiscordClientBuilder.create(args[0]).build()
+        client = DiscordClientBuilder.create(args[0]).build()
                 .login()
                 .block();
         try {

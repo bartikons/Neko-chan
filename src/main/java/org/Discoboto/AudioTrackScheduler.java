@@ -68,7 +68,7 @@ public class AudioTrackScheduler extends AudioEventAdapter {
 
         if (repeat) {
             System.out.println("repeating");
-            queue.add(track);
+            queue.add(track.makeClone());
         }
         if (endReason.mayStartNext) {
             skip();
