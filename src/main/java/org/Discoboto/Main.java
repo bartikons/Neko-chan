@@ -178,8 +178,25 @@ public class Main {
     }
 
     private static MessageCreateMono getQueue(Snowflake snowflake, MessageChannel channel) {
-        GuildAudioManager guildAudioManager = getAudioManager(snowflake);
-        return reply(channel, "Currently Playing " + guildAudioManager.getPlayer().getPlayingTrack().getInfo().title + "\n" + "In Queue: \n" + guildAudioManager.getScheduler().getQueueString());
+        try {
+            GuildAudioManager guildAudioManager = getAudioManager(snowflake);
+            AudioTrack playingTrack = guildAudioManager.getPlayer()
+                    .getPlayingTrack();
+            if (playingTrack != null) {
+                return reply(channel, "Currently Playing " +
+                        playingTrack
+                                .getInfo().title +
+                        "\n" +
+                        "In Queue: \n" +
+                        guildAudioManager.getScheduler()
+                                .getQueueString());
+            }
+            return reply(channel, "Empty nya~~");
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return reply(channel, "BUG~!");
+        }
     }
 
     private static AudioTrackScheduler getScheduler(Snowflake event) {
@@ -239,7 +256,7 @@ public class Main {
             AudioPlayer audioPlayer = guildAudioManager.getPlayer();
             AudioTrackScheduler scheduler = guildAudioManager.getScheduler();
             int size = -1;
-            if (audioPlayer != null) {
+            if (audioPlayer.getPlayingTrack() != null) {
                 size = scheduler.getQueue().size();
             }
             tracks.parallelStream().forEach(track -> {
