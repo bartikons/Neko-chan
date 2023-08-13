@@ -24,10 +24,15 @@ import discord4j.core.event.domain.message.MessageCreateEvent;
 import discord4j.core.object.VoiceState;
 import discord4j.core.object.entity.Guild;
 import discord4j.core.object.entity.Member;
+import discord4j.core.object.entity.Message;
+import discord4j.core.object.entity.User;
 import discord4j.core.object.entity.channel.MessageChannel;
-import discord4j.core.spec.MessageCreateMono;
 import discord4j.voice.VoiceConnection;
+import org.Discoboto.Audio.AudioTrackScheduler;
+import org.Discoboto.Audio.GuildAudioManager;
+import org.Discoboto.Object.Cleaner;
 import org.Discoboto.Object.Command;
+import org.apache.logging.log4j.LogManager;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -42,15 +47,17 @@ public class Main {
     public static final AudioPlayerManager PLAYER_MANAGER = new DefaultAudioPlayerManager();
     static Map<Snowflake, List<Snowflake>> blockUser = new ConcurrentHashMap<>();
     protected static final Properties prop = new Properties();
-    private static GatewayDiscordClient client;
+    protected static Cleaner cleaner;
+
+    protected static GatewayDiscordClient client;
 
     static {
         try {
-            try (InputStream input = new FileInputStream(Main.class.getClassLoader().getResource("yt.properties").getPath())) {
+            try (InputStream input = new FileInputStream(Objects.requireNonNull(Main.class.getClassLoader().getResource("yt.properties")).getPath())) {
                 // load a properties file
                 prop.load(input);
-            } catch (IOException ex) {
-                ex.printStackTrace();
+            } catch (IOException e) {
+                LogManager.getLogger(Main.class).error("Exception: ", e);
             }
             try {
                 try {
@@ -61,7 +68,7 @@ public class Main {
                                 listOfBlocked.add(Snowflake.of(helper[1]));
                             });
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    LogManager.getLogger(Main.class).error("Exception: ", e);
                 }
 
             } catch (Exception ignored) {
@@ -83,25 +90,25 @@ public class Main {
             PLAYER_MANAGER.registerSourceManager(new HttpAudioSourceManager(MediaContainerRegistry.DEFAULT_REGISTRY));
             AudioSourceManagers.registerLocalSource(PLAYER_MANAGER);
 
-            commands.put("ping", event -> event.getMessage().getChannel()
-                    .flatMap(channel -> reply(channel, "Pong!"))
+            commands.put("ping", event -> getEventMessage(event).getChannel()
+                    .flatMap(channel -> reply(event, "Pong!"))
                     .then());
 
             commands.put("join", event -> join(event)
                     .then());
-            commands.put("play", event -> Mono.justOrEmpty(event.getMessage().getContent())
+            commands.put("play", event -> Mono.justOrEmpty(getEventMessage(event).getContent())
                     .map(content -> Arrays.asList(content.split(" ")))
                     .doOnNext(command -> {
                         try {
                             join(event).block();
-                            Snowflake snowflake = event.getGuildId().get();
+                            Snowflake snowflake = getGuildSnowflake(event);
                             loadToTrack(snowflake, command);
-                            event.getMessage()
+                            getEventMessage(event)
                                     .getChannel()
                                     .flatMap(
-                                            channel -> getQueue(snowflake, channel)).block();
+                                            channel -> getQueue(snowflake, event)).block();
                         } catch (Exception e) {
-                            e.printStackTrace();
+                            LogManager.getLogger(Main.class).error("Exception: ", e);
                         }
                     })
                     .then());
@@ -111,13 +118,13 @@ public class Main {
                     // join returns a VoiceConnection which would be required if we were
                     // adding disconnection features, but for now we are just ignoring it.
                     .flatMap(VoiceConnection::disconnect));
-            commands.put("queue", event -> event.getMessage().getChannel()
-                    .flatMap(channel -> getQueue(event.getGuildId().get(), channel))
+            commands.put("queue", event -> getEventMessage(event).getChannel()
+                    .flatMap(channel -> getQueue(getGuildSnowflake(event), event))
                     .then());
-            commands.put("skip", event -> event.getMessage().getChannel()
+            commands.put("skip", event -> getEventMessage(event).getChannel()
                     .doOnNext(channel -> {
                                 skip(event);
-                                getQueue(event.getGuildId().get(), channel).block();
+                        getQueue(getGuildSnowflake(event), event).block();
                             }
                     ).then());
             commands.put("vol", event -> event.getGuild()
@@ -126,7 +133,7 @@ public class Main {
                             getAudioManager(guild.getId())
                                     .getPlayer()
                                     .setVolume(Integer.parseInt(
-                                            event.getMessage()
+                                            getEventMessage(event)
                                                     .getContent()
                                                     .split(" ")[1]));
                         } catch (Exception ignored) {
@@ -136,33 +143,75 @@ public class Main {
                     })
                     .then());
             commands.put("repeat", event -> {
-                        GuildAudioManager guildAudioManager = getAudioManager(event.getGuildId().get());
-                        guildAudioManager.getScheduler().toggleRepeat();
-                        return reply(event.getMessage().getChannel().block(), guildAudioManager.getScheduler().isRepeat() ? "Neko will be repeating song NYA~" : "Neko will stop repeating ...nya!").then();
-                    }
-            );
+                GuildAudioManager guildAudioManager = getAudioManager(getGuildSnowflake(event));
+                guildAudioManager.getScheduler().toggleRepeat();
+                return reply(event, guildAudioManager.getScheduler().isRepeat() ? "Neko will be repeating song NYA~" : "Neko will stop repeating ...nya!").then();
+            });
+            commands.put("stop", event -> {
+                GuildAudioManager guildAudioManager = getAudioManager(getGuildSnowflake(event));
+                if (guildAudioManager.getPlayer().getPlayingTrack() != null) {
+                    guildAudioManager.getPlayer().getPlayingTrack().stop();
+                    return reply(event, "Neko-chan will stop ...nya~!").then();
+                }
+                return reply(event, "but there nothing to stop nya~?").then();
+            });
+            commands.put("pause", event -> {
+                GuildAudioManager guildAudioManager = getAudioManager(getGuildSnowflake(event));
+                guildAudioManager.getPlayer().setPaused(true);
+                return reply(event, "Neko will pause track ...nyaaa!").then();
+            });
+            commands.put("start", event -> {
+                GuildAudioManager guildAudioManager = getAudioManager(getGuildSnowflake(event));
+                guildAudioManager.getPlayer().setPaused(false);
+                return reply(event, "Neko will resume ...NYA!").then();
+            });
+            commands.put("messageToAuthor", event -> {
 
-
-//        commands.put("block", event -> event.getGuild().flatMap()
-//                .then());
+                cleaner.add(event.getMessage().getChannel().block().getId(), getEventMessage(event).getId());
+                client.getUserById(Snowflake.of(prop.getProperty("Author"))).block().getPrivateChannel().block().createMessage(event.getMessage().getAuthor().flatMap(User::getGlobalName).get() + ": " + event.getMessage().getContent().replace("!messageToAuthor", "")).block();
+                return Mono.empty();
+            });
+            commands.put("help", event -> {
+                GuildAudioManager guildAudioManager = getAudioManager(getGuildSnowflake(event));
+                guildAudioManager.getPlayer().setPaused(false);
+                return reply(event, "TBD nya~!").then();
+            });
         } catch (Exception e) {
-            e.printStackTrace();
+            LogManager.getLogger(Main.class).error("Exception: ", e);
         }
+    }
+
+    private static Snowflake getGuildSnowflake(MessageCreateEvent event) {
+        if (event.getGuildId().isPresent()) {
+            return event.getGuildId().get();
+        } else return null;
+    }
+
+    private static MessageChannel getChannel(MessageCreateEvent event) {
+        return getEventMessage(event).getChannel().block();
     }
 
     private static void skip(MessageCreateEvent event) {
         int skip = 1;
         try {
-            skip = Integer.parseInt(event.getMessage().getContent().split(" ")[1]);
+            skip = Integer.parseInt(getEventMessage(event).getContent().split(" ")[1]);
         } catch (Exception ignored) {
         }
         for (int i = 0; i < skip; i++) {
-            getScheduler(event.getGuildId().get()).skip();
+            getScheduler(getGuildSnowflake(event)).skip();
         }
     }
 
-    private static MessageCreateMono reply(MessageChannel channel, String message) {
-        return channel.createMessage(message);
+    private static Mono<Void> reply(MessageCreateEvent event, String message) {
+        MessageChannel channel = getChannel(event);
+        cleaner.add(channel.getId(), getEventMessage(event).getId());
+        Message thisMessage = channel.createMessage(message).block();
+        cleaner.add(Objects.requireNonNull(thisMessage).getChannelId(), thisMessage.getId());
+        return Mono.empty();
+    }
+
+    private static Message getEventMessage(MessageCreateEvent event) {
+        return event.getMessage();
     }
 
     private static Mono<VoiceConnection> join(MessageCreateEvent event) {
@@ -176,7 +225,7 @@ public class Main {
                 );
     }
 
-    private static MessageCreateMono getQueue(Snowflake snowflake, MessageChannel channel) {
+    private static Mono<Void> getQueue(Snowflake snowflake, MessageCreateEvent channel) {
         try {
             GuildAudioManager guildAudioManager = getAudioManager(snowflake);
             AudioTrack playingTrack = guildAudioManager.getPlayer()
@@ -193,7 +242,7 @@ public class Main {
             return reply(channel, "Empty nya~~");
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LogManager.getLogger(Main.class).error("Exception: ", e);
             return reply(channel, "BUG~!");
         }
     }
@@ -208,53 +257,67 @@ public class Main {
 
 
     public static void main(String[] args) {
-
-
-        client = DiscordClientBuilder.create(args[0]).build()
-                .login()
-                .block();
         try {
-            client.getEventDispatcher().on(MessageCreateEvent.class)
-                    // 3.1 Message.getContent() is a String
-                    .flatMap(event -> Mono.just(event.getMessage().getContent())
-                            .flatMap(content -> {
-                                        try {
-                                            return Flux.fromIterable(commands.entrySet())
-                                                    // We will be using ! as our "prefix" to any command in the system.
-                                                    .filter(entry -> content.toLowerCase().startsWith('!' + entry.getKey()))
-                                                    .flatMap(entry -> {
-                                                        if (isBlocked(event)) {
-                                                            return Mono.just(reply(event.getMessage().getChannel().block(), "Fuck off")).block().then(Mono.just(""));
-                                                        }
-                                                        return entry.getValue().execute(event);
-                                                    })
-                                                    .next();
-                                        } catch (Exception e) {
-                                            e.printStackTrace();
-                                            return Mono.empty();
-                                        }
-                                    }
-                            )
-                    )
-                    .subscribe();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+            client = DiscordClientBuilder.create(args[0]).build()
+                    .login()
+                    .block();
 
-        client.onDisconnect().block();
+            cleaner = new Cleaner(client);
+            cleaner.start();
+
+            try {
+                Objects.requireNonNull(client).getEventDispatcher().on(MessageCreateEvent.class)
+                        // 3.1 Message.getContent() is a String
+                        .flatMap(event -> Mono.just(getEventMessage(event).getContent())
+                                .flatMap(content -> {
+                                            try {
+                                                return Flux.fromIterable(commands.entrySet())
+                                                        // We will be using ! as our "prefix" to any command in the system.
+                                                        .filter(entry -> content.toLowerCase().split(" ")[0].equalsIgnoreCase('!' + entry.getKey()))
+                                                        .flatMap(entry -> {
+                                                            if (event.getMessage().getAuthor().flatMap(User::getGlobalName).isEmpty()) {
+                                                                return Mono.empty();
+                                                            }
+                                                            if (!event.getMessage().getAuthor().flatMap(User::getGlobalName).get().equals(prop.getProperty("Name"))) {
+                                                                if (isBlocked(event)) {
+                                                                    return Objects.requireNonNull(Mono.just(reply(event, "Fuck off")).block()).then(Mono.just(""));
+                                                                }
+                                                                return entry.getValue().execute(event);
+                                                            }
+                                                            return Mono.empty();
+                                                        })
+                                                        .next();
+                                            } catch (Exception e) {
+                                                LogManager.getLogger(Main.class).error("Exception: ", e);
+                                                return Mono.empty();
+                                            }
+                                        }
+                                )
+                        )
+                        .subscribe();
+            } catch (Exception e) {
+                LogManager.getLogger(Main.class).error("Exception: ", e);
+            }
+
+            Objects.requireNonNull(client).onDisconnect().block();
+        } finally {
+            cleaner.CleanAll();
+        }
     }
 
     private static boolean isBlocked(MessageCreateEvent event) {
         try {
-            if (event.getMessage().getAuthor().isEmpty()) {
+            if (getEventMessage(event).getAuthor().isEmpty()) {
                 return true;
             }
-            Snowflake snowflake = event.getGuildId().get();
+            Snowflake snowflake = getGuildSnowflake(event);
             blockUser.computeIfAbsent(snowflake, k -> new ArrayList<>());
-            return blockUser.get(snowflake).contains(event.getMessage().getAuthor().get().getId());
+            return blockUser.get(snowflake).contains(getEventMessage(event).getAuthor().get().getId());
+        } catch (NullPointerException e) {
+            return false;
         } catch (Exception e) {
-            e.printStackTrace();
-            return true;
+            LogManager.getLogger(Main.class).error("Exception: ", e);
+            return false;
         }
     }
 
@@ -289,14 +352,14 @@ public class Main {
                         }
 
                         @Override
-                        public void loadFailed(FriendlyException exception) {
-                            exception.printStackTrace();
+                        public void loadFailed(FriendlyException e) {
+                            LogManager.getLogger(Main.class).error("Exception: ", e);
 
 
                         } /* overrides */
                     });
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    LogManager.getLogger(Main.class).error("Exception: ", e);
 
                 }
             });
@@ -305,14 +368,14 @@ public class Main {
                 if (System.currentTimeMillis() - timo > 5000)
                     break;
                 try {
-                    Thread.sleep(100);
+                    Thread.sleep(250);
                 } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
+                    LogManager.getLogger(Main.class).error("Exception: ", e);
                 }
             } while ((audioPlayer.getPlayingTrack() == null && scheduler.getQueue().isEmpty()) || (size != -1 && scheduler.getQueue().size() == size));
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LogManager.getLogger(Main.class).error("Exception: ", e);
         }
     }
 

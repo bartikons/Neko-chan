@@ -1,4 +1,4 @@
-package org.Discoboto;
+package org.Discoboto.Audio;
 
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
 import com.sedmelluq.discord.lavaplayer.player.event.AudioEventAdapter;
@@ -9,7 +9,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class AudioTrackScheduler extends AudioEventAdapter {
 
@@ -40,7 +39,7 @@ public class AudioTrackScheduler extends AudioEventAdapter {
 
     public List<String> getQueueString() {
         if (!queue.isEmpty()) {
-            return queue.stream().map(e -> e.getInfo().title + "\n").collect(Collectors.toList());
+            return queue.stream().map(e -> e.getInfo().title + "\n").toList().subList(0, 20);
         } else return new ArrayList<>();
     }
 

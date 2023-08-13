@@ -1,4 +1,4 @@
-package org.Discoboto;
+package org.Discoboto.Audio;
 
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayer;
 import discord4j.common.util.Snowflake;
