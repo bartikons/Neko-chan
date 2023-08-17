@@ -173,7 +173,9 @@ public class Main {
             commands.put("help", event -> {
                 GuildAudioManager guildAudioManager = getAudioManager(getGuildSnowflake(event));
                 guildAudioManager.getPlayer().setPaused(false);
-                return reply(event, "TBD nya~!").then();
+                List<String> list = new ArrayList<>();
+                commands.forEach((key, value) -> list.add(key));
+                return reply(event, list.toString()).then();
             });
         } catch (Exception e) {
             LogManager.getLogger(Main.class).error("Exception: ", e);
