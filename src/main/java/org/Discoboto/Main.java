@@ -203,9 +203,8 @@ public class Main {
 
     private static Mono<Void> reply(MessageCreateEvent event, String message) {
         MessageChannel channel = getChannel(event);
-        cleaner.add(channel.getId(), getEventMessage(event).getId());
         Message thisMessage = channel.createMessage(message).block();
-        cleaner.add(Objects.requireNonNull(thisMessage).getChannelId(), thisMessage.getId());
+        addToCleaner(Objects.requireNonNull(thisMessage));
         return Mono.empty();
     }
 
@@ -274,6 +273,7 @@ public class Main {
                                                         // We will be using ! as our "prefix" to any command in the system.
                                                         .filter(entry -> content.toLowerCase().split(" ")[0].equalsIgnoreCase('!' + entry.getKey()))
                                                         .flatMap(entry -> {
+                                                            addToCleaner(event);
                                                             if (event.getMessage().getAuthor().flatMap(User::getGlobalName).isEmpty()) {
                                                                 return Mono.empty();
                                                             }
@@ -302,6 +302,15 @@ public class Main {
         } finally {
             cleaner.CleanAll();
         }
+    }
+
+    private static void addToCleaner(MessageCreateEvent event) {
+        Message message = getEventMessage(event);
+        addToCleaner(message);
+    }
+
+    private static void addToCleaner(Message message) {
+        cleaner.add(message.getChannelId(), message.getId());
     }
 
     private static boolean isBlocked(MessageCreateEvent event) {
