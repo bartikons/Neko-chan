@@ -36,7 +36,6 @@ import org.apache.logging.log4j.LogManager;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
@@ -53,7 +52,7 @@ public class Main {
 
     static {
         try {
-            try (InputStream input = new FileInputStream(Objects.requireNonNull(Main.class.getClassLoader().getResource("yt.properties")).getPath())) {
+            try (InputStream input = Main.class.getClassLoader().getResourceAsStream("yt.properties")) {
                 // load a properties file
                 prop.load(input);
             } catch (IOException e) {
@@ -258,7 +257,7 @@ public class Main {
 
     public static void main(String[] args) {
         try {
-            client = DiscordClientBuilder.create(args[0]).build()
+            client = DiscordClientBuilder.create(prop.getProperty("key")).build()
                     .login()
                     .block();
 

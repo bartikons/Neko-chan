@@ -39,7 +39,7 @@ public class AudioTrackScheduler extends AudioEventAdapter {
 
     public List<String> getQueueString() {
         if (!queue.isEmpty()) {
-            return queue.stream().map(e -> e.getInfo().title + "\n").toList().subList(0, 20);
+            return queue.stream().map(e -> e.getInfo().title + "\n").toList().subList(0, Math.min(queue.size(), 20));
         } else return new ArrayList<>();
     }
 
