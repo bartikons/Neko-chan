@@ -1,4 +1,4 @@
-package org.Discoboto.Object;
+package org.Discoboto;
 
 import discord4j.common.util.Snowflake;
 import discord4j.core.GatewayDiscordClient;

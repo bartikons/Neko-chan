@@ -6,7 +6,8 @@ import discord4j.common.util.Snowflake;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import static org.Discoboto.Main.PLAYER_MANAGER;
+import static org.Discoboto.Command.AudioCommand.PLAYER_MANAGER;
+
 
 public class GuildAudioManager {
 
