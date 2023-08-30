@@ -72,16 +72,13 @@ public class AudioTrackScheduler extends AudioEventAdapter {
 
     public List<EmbedCreateFields.Field> getQueueEmbed() {
         if (!queue.isEmpty()) {
-            List<EmbedCreateFields.Field> fieldList = new ArrayList<>();
-            fieldList.add(EmbedCreateFields.Field.of("QUEUE:", "will be played", true));
-            fieldList.addAll(queue.stream().map(audioTrack ->
+            return new ArrayList<>(queue.stream().map(audioTrack ->
                             EmbedCreateFields
                                     .Field
                                     .of("TRACK", audioTrack != null ? audioTrack.getInfo().title : "Nya?", false)
                     )
                     .toList()
                     .subList(0, Math.min(queue.size(), 20)));
-            return fieldList;
         } else return new ArrayList<>();
     }
 
