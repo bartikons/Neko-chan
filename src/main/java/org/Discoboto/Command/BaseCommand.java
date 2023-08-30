@@ -7,25 +7,32 @@ import discord4j.core.object.VoiceState;
 import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.Message;
 import discord4j.core.object.entity.channel.MessageChannel;
+import discord4j.core.spec.EmbedCreateFields;
+import discord4j.core.spec.EmbedCreateSpec;
+import discord4j.rest.util.Color;
 import discord4j.voice.VoiceConnection;
 import org.Discoboto.Audio.AudioTrackScheduler;
 import org.Discoboto.Audio.GuildAudioManager;
+import org.Discoboto.Main;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import reactor.core.publisher.Mono;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static org.Discoboto.Main.cleaner;
 
-public class baseCommand {
+public class BaseCommand {
+
 
     public static final Map<String, InterfaceCommand> commands = new ConcurrentHashMap<>();
     static Map<Snowflake, List<Snowflake>> blockUser = new ConcurrentHashMap<>();
+
+    public static final Properties prop = new Properties();
+    static List<String> skipAll = Arrays.stream("all,queue,hehe,baka,shit,neko,plz".split(",")).toList();
 
     protected static Snowflake getGuildSnowflake(MessageCreateEvent event) {
         if (event.getGuildId().isPresent()) {
@@ -37,22 +44,90 @@ public class baseCommand {
         return getEventMessage(event).getChannel().block();
     }
 
-    protected static void skip(MessageCreateEvent event) {
-        int skip = 1;
-        try {
-            skip = Integer.parseInt(getEventMessage(event).getContent().split(" ")[1]);
-        } catch (Exception ignored) {
+    static {
+
+        try (InputStream input = Main.class.getClassLoader().getResourceAsStream("yt.properties")) {
+            // load a properties file
+            prop.load(input);
+        } catch (IOException e) {
+            LogManager.getLogger(Main.class).error("Exception: ", e);
         }
-        for (int i = 0; i < skip; i++) {
-            getScheduler(getGuildSnowflake(event)).skip();
+        try {
+            try {
+                Arrays.stream(prop.getProperty("blocked").split(","))
+                        .forEach(guildBlockedUser -> {
+                            String[] helper = guildBlockedUser.split(":");
+                            List<Snowflake> listOfBlocked = blockUser.computeIfAbsent(Snowflake.of(helper[0]), k -> new ArrayList<>());
+                            listOfBlocked.add(Snowflake.of(helper[1]));
+                        });
+            } catch (Exception e) {
+                getLogger().error("Exception: ", e);
+            }
+
+        } catch (Exception ignored) {
+            blockUser = new ConcurrentHashMap<>();
         }
     }
 
-    public static Mono<Void> reply(MessageCreateEvent event, String message) {
+    protected static void skip(MessageCreateEvent event) {
+        int skip = 1;
+        AudioTrackScheduler scheduler = getScheduler(getGuildSnowflake(event));
+        String skipero = getEventMessage(event).getContent().split(" ")[1];
+        boolean skipeAll = false;
+        try {
+            if (skipAll.contains(skipero)) {
+                skip = scheduler.getQueue().size();
+                skipeAll = true;
+            } else {
+                skip = Integer.parseInt(skipero);
+            }
+        } catch (Exception ignored) {
+        }
+        scheduler.setSkiping(true);
+        for (int i = 0; i < skip; i++) {
+            scheduler.skip();
+        }
+        if (skipeAll) {
+            scheduler.play(null, true);
+            scheduler.getQueue().removeIf(e -> true);
+        }
+
+        scheduler.setSkiping(false);
+
+    }
+
+    public static Mono<Message> reply(MessageCreateEvent event, String message) {
+        return reply(event, message, true);
+    }
+
+    public static Mono<Message> reply(MessageCreateEvent event, List<EmbedCreateFields.Field> message) {
+        return reply(event, message, true);
+    }
+
+    public static Mono<Message> reply(MessageCreateEvent event, String message, boolean deleteMessage) {
         MessageChannel channel = getChannel(event);
         Message thisMessage = channel.createMessage(message).block();
-        addToCleaner(Objects.requireNonNull(thisMessage));
-        return Mono.empty();
+        if (deleteMessage) {
+            addToCleaner(Objects.requireNonNull(thisMessage));
+        }
+        return Mono.just(thisMessage);
+    }
+
+    public static Mono<Message> reply(MessageCreateEvent event, List<EmbedCreateFields.Field> message, boolean deleteMessage) {
+
+        MessageChannel channel = getChannel(event);
+
+        Message thisMessage = channel
+                .createMessage(EmbedCreateSpec
+                        .builder()
+                        .color(Color.PINK)
+                        .addAllFields(message)
+                        .build())
+                .block();
+        if (deleteMessage) {
+            addToCleaner(Objects.requireNonNull(thisMessage));
+        }
+        return Mono.just(thisMessage);
     }
 
     public static Message getEventMessage(MessageCreateEvent event) {
@@ -70,19 +145,15 @@ public class baseCommand {
                 );
     }
 
-    protected static Mono<Void> getQueue(Snowflake snowflake, MessageCreateEvent channel) {
+    protected static Mono<Message> getQueue(Snowflake snowflake, MessageCreateEvent channel) {
         try {
             GuildAudioManager guildAudioManager = getAudioManager(snowflake);
             AudioTrack playingTrack = guildAudioManager.getPlayer()
                     .getPlayingTrack();
             if (playingTrack != null) {
-                return reply(channel, "Currently Playing " +
-                        playingTrack
-                                .getInfo().title +
-                        "\n" +
-                        "In Queue: \n" +
-                        guildAudioManager.getScheduler()
-                                .getQueueString());
+                List<EmbedCreateFields.Field> queue = guildAudioManager.getScheduler().getQueueEmbed();
+                if (!queue.isEmpty())
+                    return reply(channel, queue);
             }
             return reply(channel, "Empty nya~~");
 
@@ -93,7 +164,7 @@ public class baseCommand {
     }
 
     private static Logger getLogger() {
-        return LogManager.getLogger(baseCommand.class);
+        return LogManager.getLogger(BaseCommand.class);
     }
 
 

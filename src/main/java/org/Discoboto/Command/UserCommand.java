@@ -1,7 +1,6 @@
 package org.Discoboto.Command;
 
 import discord4j.common.util.Snowflake;
-import discord4j.core.DiscordClientBuilder;
 import discord4j.core.object.entity.User;
 import org.Discoboto.Audio.GuildAudioManager;
 import org.Discoboto.Main;
@@ -9,44 +8,17 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import reactor.core.publisher.Mono;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Properties;
-import java.util.concurrent.ConcurrentHashMap;
 
 import static org.Discoboto.Main.cleaner;
 
-public class UserCommand extends baseCommand {
+public class UserCommand extends BaseCommand {
 
-
-    public static final Properties prop = new Properties();
+    static UserCommand instance;
 
     static {
         try {
-            try (InputStream input = Main.class.getClassLoader().getResourceAsStream("yt.properties")) {
-                // load a properties file
-                prop.load(input);
-            } catch (IOException e) {
-                LogManager.getLogger(Main.class).error("Exception: ", e);
-            }
-            try {
-                try {
-                    Arrays.stream(prop.getProperty("blocked").split(","))
-                            .forEach(guildBlockedUser -> {
-                                String[] helper = guildBlockedUser.split(":");
-                                List<Snowflake> listOfBlocked = blockUser.computeIfAbsent(Snowflake.of(helper[0]), k -> new ArrayList<>());
-                                listOfBlocked.add(Snowflake.of(helper[1]));
-                            });
-                } catch (Exception e) {
-                    getLogger().error("Exception: ", e);
-                }
-
-            } catch (Exception ignored) {
-                blockUser = new ConcurrentHashMap<>();
-            }
 
             commands.put("ping", event -> getEventMessage(event).getChannel()
                     .flatMap(channel -> reply(event, "Pong!"))
@@ -58,9 +30,7 @@ public class UserCommand extends baseCommand {
             commands.put("messageToAuthor", event -> {
 
                 cleaner.add(event.getMessage().getChannel().block().getId(), getEventMessage(event).getId());
-                DiscordClientBuilder.create(prop.getProperty("key")).build()
-                        .login()
-                        .block()
+                Main.getClient()
                         .getUserById(Snowflake.of(prop.getProperty("Author"))).block()
                         .getPrivateChannel().block()
                         .createMessage(
@@ -73,6 +43,16 @@ public class UserCommand extends baseCommand {
                                                 replace("!messageToAuthor", "")).block();
                 return Mono.empty();
             });
+            commands.put("cleanChannel",
+                    event -> event.getMessage()
+                            .getChannel()
+                            .flatMap(channel ->
+                                    channel.getMessagesBefore(
+                                                    channel.getLastMessageId().get())
+                                            .parallel()
+                                            .doOnNext(message -> cleaner.add(channel.getId(), message.getId()))
+                                            .then()
+                                            .doOnNext(e -> reply(event, "It ain't much but it's honest work nya~"))));
             commands.put("help", event -> {
                 GuildAudioManager guildAudioManager = getAudioManager(getGuildSnowflake(event));
                 guildAudioManager.getPlayer().setPaused(false);
@@ -81,10 +61,23 @@ public class UserCommand extends baseCommand {
                 return reply(event, list.toString()).then();
             });
 
+
         } catch (Exception e) {
             getLogger().error("Exception: ", e);
         }
     }
+
+    public UserCommand() {
+
+    }
+
+    public static UserCommand getInstance() {
+        if (instance == null) {
+            instance = new UserCommand();
+        }
+        return instance;
+    }
+
 
     private static Logger getLogger() {
         return LogManager.getLogger(UserCommand.class);

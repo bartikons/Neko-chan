@@ -4,17 +4,19 @@ import discord4j.common.util.Snowflake;
 import discord4j.core.GatewayDiscordClient;
 import reactor.core.scheduler.Schedulers;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.function.Consumer;
+import java.util.AbstractQueue;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
-public class Cleaner extends Thread {
+public class Cleaner extends TimerTask {
 
-    List<NekoMessages> listOfLastMessages = new ArrayList<>(25);
+    AbstractQueue<NekoMessages> listOfLastMessages = new ConcurrentLinkedQueue<>();
     GatewayDiscordClient client;
 
     public Cleaner(GatewayDiscordClient client) {
         this.client = client;
+        new Timer().scheduleAtFixedRate(this, 0, 20000);
     }
 
     public void add(Snowflake channelId, Snowflake messagesId) {
@@ -22,39 +24,24 @@ public class Cleaner extends Thread {
     }
 
     public void run() {
-        while (true) {
-
-            for (int i = 0; i < listOfLastMessages.size(); i++) {
-                NekoMessages message = listOfLastMessages.get(i);
-                if ((System.currentTimeMillis() - message.getTimeOfCreation()) > 3000) {
-                    clean(message);
-                    listOfLastMessages.remove(i--);
-                }
-            }
-
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        }
-
+        listOfLastMessages.parallelStream().forEach(nekoMessages -> {
+            clean(nekoMessages);
+            listOfLastMessages.remove(nekoMessages);
+        });
     }
 
-    public Consumer<? super Void> CleanAll() {
+    public void CleanAll() {
         try {
             listOfLastMessages.forEach(this::clean);
         } catch (Exception ignored) {
         }
 
-        return null;
     }
 
     private void clean(NekoMessages nekoMessages) {
         try {
             client.getMessageById(nekoMessages.getChannelId(), nekoMessages.getMessagesId()).block().delete().publishOn(Schedulers.immediate()).block();
         } catch (Exception e) {
-            System.out.println(e);
             e.printStackTrace();
         }
     }

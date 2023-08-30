@@ -17,7 +17,7 @@ import com.sedmelluq.discord.lavaplayer.source.youtube.YoutubeAudioSourceManager
 import com.sedmelluq.discord.lavaplayer.tools.FriendlyException;
 import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
-import discord4j.common.util.Snowflake;
+import discord4j.core.event.domain.message.MessageCreateEvent;
 import discord4j.core.object.entity.Guild;
 import discord4j.core.object.entity.Member;
 import discord4j.voice.VoiceConnection;
@@ -31,11 +31,11 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
-import static org.Discoboto.Command.UserCommand.prop;
-
-public class AudioCommand extends baseCommand {
+public class AudioCommand extends BaseCommand {
 
     public static final AudioPlayerManager PLAYER_MANAGER = new DefaultAudioPlayerManager();
+
+    static AudioCommand instance;
 
     static {
 
@@ -58,12 +58,11 @@ public class AudioCommand extends baseCommand {
                 .doOnNext(command -> {
                     try {
                         join(event).block();
-                        Snowflake snowflake = getGuildSnowflake(event);
-                        loadToTrack(snowflake, command);
+                        loadToTrack(event, command);
                         getEventMessage(event)
                                 .getChannel()
                                 .flatMap(
-                                        channel -> getQueue(snowflake, event)).block();
+                                        channel -> getQueue(getGuildSnowflake(event), event)).block();
                     } catch (Exception e) {
                         getLogger().error("Exception: ", e);
                     }
@@ -107,7 +106,8 @@ public class AudioCommand extends baseCommand {
         commands.put("stop", event -> {
             GuildAudioManager guildAudioManager = getAudioManager(getGuildSnowflake(event));
             if (guildAudioManager.getPlayer().getPlayingTrack() != null) {
-                guildAudioManager.getPlayer().getPlayingTrack().stop();
+                guildAudioManager.getPlayer().startTrack(null, false);
+                guildAudioManager.getScheduler().getQueue().removeIf(e -> true);
                 return reply(event, "Neko-chan will stop ...nya~!").then();
             }
             return reply(event, "but there nothing to stop nya~?").then();
@@ -120,19 +120,33 @@ public class AudioCommand extends baseCommand {
         commands.put("start", event -> {
             GuildAudioManager guildAudioManager = getAudioManager(getGuildSnowflake(event));
             guildAudioManager.getPlayer().setPaused(false);
+
             return reply(event, "Neko will resume ...NYA!").then();
         });
     }
 
-    private static void loadToTrack(Snowflake snowflake, List<String> tracks) {
+    public AudioCommand() {
+
+    }
+
+    public static AudioCommand getInstance() {
+        if (instance == null) {
+            instance = new AudioCommand();
+        }
+        return instance;
+    }
+
+    static void loadToTrack(MessageCreateEvent event, List<String> tracks) {
         try {
-            GuildAudioManager guildAudioManager = getAudioManager(snowflake);
+            GuildAudioManager guildAudioManager = getAudioManager(getGuildSnowflake(event));
             AudioPlayer audioPlayer = guildAudioManager.getPlayer();
             AudioTrackScheduler scheduler = guildAudioManager.getScheduler();
-            int size = -1;
-            if (audioPlayer.getPlayingTrack() != null) {
-                size = scheduler.getQueue().size();
+            scheduler.setMessageChannel(event.getMessage().getChannel().block());
+            final int[] size = {-1};
+            if (audioPlayer.getPlayingTrack() != null || tracks.size() < 2) {
+                size[0] = scheduler.getQueue().size();
             }
+            final boolean[] isPlaylist = new boolean[1];//
             tracks.parallelStream().forEach(track -> {
                 if (Objects.equals(track, "!play") || track.trim().isEmpty()) {
                     return;
@@ -142,19 +156,21 @@ public class AudioCommand extends baseCommand {
                         @Override
                         public void trackLoaded(AudioTrack track) {
                             scheduler.play(track);
+                            isPlaylist[0] = false;
                         }
-
                         @Override
                         public void playlistLoaded(AudioPlaylist playlist) {
                             playlist.getTracks().parallelStream().forEach(scheduler::play);
+                            size[0] = playlist.getTracks().size();
+                            if (size[0] != 1) {
+                                isPlaylist[0] = true;
+                            }
 
                         }
-
                         @Override
                         public void noMatches() {
                             getLogger().error("Exception: noMatches");
                         }
-
                         @Override
                         public void loadFailed(FriendlyException e) {
                             getLogger().error("Exception: ", e);
@@ -162,7 +178,6 @@ public class AudioCommand extends baseCommand {
                     });
                 } catch (Exception e) {
                     getLogger().error("Exception: ", e);
-
                 }
             });
             long timo = System.currentTimeMillis();
@@ -175,7 +190,8 @@ public class AudioCommand extends baseCommand {
                     getLogger().error("Exception: ", e);
                 }
             } while ((audioPlayer.getPlayingTrack() == null && scheduler.getQueue().isEmpty()) ||
-                    (size != -1 && scheduler.getQueue().size() == size));
+                    (size[0] != -1 && scheduler.getQueue().size() == size[0]) ||
+                    (isPlaylist[0] && !scheduler.getQueue().isEmpty()));
 
         } catch (Exception e) {
             getLogger().error("Exception: ", e);

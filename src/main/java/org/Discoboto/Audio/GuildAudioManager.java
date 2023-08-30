@@ -41,6 +41,4 @@ public class GuildAudioManager {
 
         player.addListener(scheduler);
     }
-
-    // getters
 }
