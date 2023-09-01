@@ -72,7 +72,12 @@ public class BaseCommand {
     protected static void skip(MessageCreateEvent event) {
         int skip = 1;
         AudioTrackScheduler scheduler = getScheduler(getGuildSnowflake(event));
-        String skipero = getEventMessage(event).getContent().split(" ")[1];
+        String skipero = "";
+        try {
+            skipero = getEventMessage(event).getContent().split(" ")[1];
+        } catch (Exception e) {
+            //ignore as skip is valid option
+        }
         boolean skipeAll = false;
         try {
             if (skipAll.contains(skipero)) {

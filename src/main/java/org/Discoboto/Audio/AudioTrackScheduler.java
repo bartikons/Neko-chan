@@ -121,7 +121,7 @@ public class AudioTrackScheduler extends AudioEventAdapter {
     public void onTrackEnd(AudioPlayer player, AudioTrack track, AudioTrackEndReason endReason) {
         // Advance the player if the track completed naturally (FINISHED) or if the track cannot play (LOAD_FAILED)
         cleaner.add(message.getChannelId(), message.getId());
-        if (repeat) {
+        if (repeat && !skiping) {
             queue.add(track.makeClone());
         }
         if (endReason.mayStartNext) {
