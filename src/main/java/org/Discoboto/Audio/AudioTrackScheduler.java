@@ -112,7 +112,8 @@ public class AudioTrackScheduler extends AudioEventAdapter {
                     .color(Color.BISMARK)
                     .addField("Now playing", track.getInfo().title, false)
                     .build();
-            message = messageChannel.createMessage(embedCreateSpec).publishOn(Schedulers.immediate()).block();
+            messageChannel.createMessage(embedCreateSpec).publishOn(Schedulers.immediate()).subscribe(messageSub -> message = messageSub);
+
         }
         super.onTrackStart(player, track);
     }

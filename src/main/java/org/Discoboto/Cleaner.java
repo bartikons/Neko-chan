@@ -40,7 +40,7 @@ public class Cleaner extends TimerTask {
 
     private void clean(NekoMessages nekoMessages) {
         try {
-            client.getMessageById(nekoMessages.getChannelId(), nekoMessages.getMessagesId()).block().delete().publishOn(Schedulers.immediate()).block();
+            client.getMessageById(nekoMessages.getChannelId(), nekoMessages.getMessagesId()).subscribe(message -> message.delete().publishOn(Schedulers.immediate()).subscribe());
         } catch (Exception e) {
             e.printStackTrace();
         }
