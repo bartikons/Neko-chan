@@ -20,6 +20,7 @@ import reactor.core.publisher.Mono;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -49,7 +50,7 @@ public class BaseCommand {
         try (InputStream input = Main.class.getClassLoader().getResourceAsStream("yt.properties")) {
             // load a properties file
             prop.load(input);
-        } catch (IOException e) {
+        } catch (IOException | NullPointerException e) {
             LogManager.getLogger(Main.class).error("Exception: ", e);
         }
         try {
@@ -128,7 +129,7 @@ public class BaseCommand {
                         .color(Color.PINK)
                         .addAllFields(message)
                         .build())
-                .block();
+                .block(Duration.ofSeconds(9));
         if (deleteMessage) {
             addToCleaner(Objects.requireNonNull(thisMessage));
         }

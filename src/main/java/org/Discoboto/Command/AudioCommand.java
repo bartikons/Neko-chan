@@ -44,13 +44,6 @@ public class AudioCommand extends BaseCommand {
         } else {
             PLAYER_MANAGER.registerSourceManager(new YoutubeAudioSourceManager(true, null, null));
         }
-        PLAYER_MANAGER.registerSourceManager(SoundCloudAudioSourceManager.createDefault());
-        PLAYER_MANAGER.registerSourceManager(new BandcampAudioSourceManager());
-        PLAYER_MANAGER.registerSourceManager(new VimeoAudioSourceManager());
-        PLAYER_MANAGER.registerSourceManager(new TwitchStreamAudioSourceManager());
-        PLAYER_MANAGER.registerSourceManager(new BeamAudioSourceManager());
-        PLAYER_MANAGER.registerSourceManager(new GetyarnAudioSourceManager());
-        PLAYER_MANAGER.registerSourceManager(new HttpAudioSourceManager(MediaContainerRegistry.DEFAULT_REGISTRY));
         AudioSourceManagers.registerLocalSource(PLAYER_MANAGER);
 
         commands.put("play", event -> Mono.justOrEmpty(getEventMessage(event).getContent())

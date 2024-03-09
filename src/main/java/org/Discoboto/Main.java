@@ -8,6 +8,7 @@ import org.Discoboto.Command.AudioCommand;
 import org.Discoboto.Command.UserCommand;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.Objects;
 
@@ -50,6 +51,7 @@ public class Main {
                 .flatMap(content -> Flux.fromIterable(commands.entrySet())
                         // We will be using ! as our "prefix" to any command in the system.
                         .filter(entry -> content.toLowerCase().split(" ")[0].equalsIgnoreCase('!' + entry.getKey()))
+                        .publishOn(Schedulers.boundedElastic())
                         .flatMap(entry -> {
                             addToCleaner(event);
                             if (event.getMessage().getAuthor().flatMap(User::getGlobalName).isEmpty()) {
@@ -57,7 +59,7 @@ public class Main {
                             }
                             if (!event.getMessage().getAuthor().flatMap(User::getGlobalName).get().equals(prop.getProperty("Name"))) {
                                 if (isBlocked(event)) {
-                                    return Mono.just(reply(event, "Fuck off")).block().then(Mono.just(""));
+                                    return Mono.just(reply(event, "Fuck off")).publishOn(Schedulers.boundedElastic()).then(Mono.just(""));
                                 }
                                 return entry.getValue().execute(event);
                             }
